@@ -3,6 +3,7 @@
   import viteLogo from '/vite.svg'
   import Counter from './lib/Counter.svelte'
   import Camera from './lib/components/Camera.svelte'
+  import QRKissDemo from './lib/components/QRKissDemo.svelte'
   
   // Simple navigation
   let currentPage = 'home';
@@ -11,6 +12,7 @@
     currentPage = page;
   }
 </script>
+
 
 <main class="container mx-auto p-4">
   <!-- Navigation -->
@@ -30,6 +32,14 @@
           on:click={() => navigate('camera')}
         >
           Camera
+        </button>
+      </li>
+      <li>
+        <button 
+          class="px-4 py-2 rounded {currentPage === 'qrkiss' ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
+          on:click={() => navigate('qrkiss')}
+        >
+          QR Kiss
         </button>
       </li>
     </ul>
@@ -66,6 +76,12 @@
     <div class="max-w-lg mx-auto p-4 bg-gray-50 rounded-lg shadow">
       <h2 class="text-xl font-semibold mb-4">Camera Test</h2>
       <Camera />
+    </div>
+  {:else if currentPage === 'qrkiss'}
+    <!-- QR Kiss Demo Section -->
+    <div class="max-w-lg mx-auto p-4 bg-gray-50 rounded-lg shadow">
+      <h2 class="text-xl font-semibold mb-4">QR Kiss Demo</h2>
+      <QRKissDemo />
     </div>
   {/if}
 </main>
