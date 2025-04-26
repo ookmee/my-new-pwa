@@ -1,9 +1,12 @@
-import { mount } from 'svelte'
 import './app.css'
+import './i18n'  // Import i18n before app
 import App from './App.svelte'
 
-const app = mount(App, {
-  target: document.getElementById('app')!,
-})
+// Wait a tiny bit for i18n to initialize
+setTimeout(() => {
+  const app = new App({
+    target: document.getElementById('app')!,
+  })
+}, 10);
 
-export default app
+export default App
