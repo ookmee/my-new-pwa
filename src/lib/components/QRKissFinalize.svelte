@@ -1,6 +1,6 @@
 <!-- src/lib/components/QRKissFinalize.svelte
  * Escrow Finalization Component
- * Optimized for cross-device scanning with larger QR and tracking improvements
+ * With enhanced visual feedback for scanning progress
  */
 -->
 <script>
@@ -23,12 +23,19 @@
     let stream = null;
     let qrData = '';
     let qrImage = null;
-    let state = 'initial'; // 'initial', 'detected', 'completed'
+    let state = 'initial'; // 'initial', 'detected', 'verified', 'completed'
     let boxColor = '#3498db'; // Blue for initial state
     let showModal = false;
     let securityCode = null;
     
-    // Scan box dimensions - larger for better tracking
+    // Visual feedback state
+    let progressPercent = 0;
+    let detectionStartTime = 0;
+    let requiredDetectionTime = 1000; // 1 second of continuous detection
+    let detectionMessage = '';
+    let showDetectionOverlay = false;
+    
+    // Scan box dimensions
     let boxSize = 280;
     
     // Debug state
@@ -248,10 +255,17 @@
           // Process the QR code
           processQR(code.data);
         } else {
+          // If we don't find a QR code, reset detection progress
+          if (detectionStartTime !== 0) {
+            detectionStartTime = 0;
+            progressPercent = 0;
+            showDetectionOverlay = false;
+          }
+          
           // If we don't find a QR code for several frames, reset tracking
           if (trackingActive) {
-            // This would be better with a counter, but for simplicity we'll just reset randomly
-            if (Math.random() < 0.1) { // 10% chance to reset per frame when not finding QR
+            // Reset tracking randomly when not finding QR
+            if (Math.random() < 0.1) { // 10% chance to reset per frame
               trackingActive = false;
               lastQRLocation = null;
             }
@@ -293,23 +307,43 @@
         return;
       }
       
-      // We found a matching escrow!
-      console.log("Matching escrow found!");
-      state = 'detected';
-      boxColor = '#f39c12'; // Orange
-      
-      // Generate security code
-      securityCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-      
-      // Complete after short delay
-      setTimeout(() => {
-        completeFinalization();
-      }, 1000);
+      // Process based on current state
+      if (state === 'initial') {
+        // First detection - start progress tracking
+        if (detectionStartTime === 0) {
+          detectionStartTime = Date.now();
+          showDetectionOverlay = true;
+          detectionMessage = 'Escrow Detected';
+          state = 'detected';
+          boxColor = '#f39c12'; // Orange
+        }
+        
+        // Calculate progress
+        const elapsedTime = Date.now() - detectionStartTime;
+        progressPercent = Math.min(100, Math.floor((elapsedTime / requiredDetectionTime) * 100));
+        
+        // Check if we've maintained detection long enough
+        if (elapsedTime >= requiredDetectionTime) {
+          // Escrow verified after continuous detection
+          state = 'verified';
+          detectionMessage = 'Escrow Verified';
+          boxColor = '#27ae60'; // Green
+          
+          // Generate security code
+          securityCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+          
+          // Complete after short delay
+          setTimeout(() => {
+            completeFinalization();
+          }, 500);
+        }
+      }
     }
     
     function completeFinalization() {
       state = 'completed';
-      boxColor = '#2ecc71'; // Green
+      boxColor = '#2ecc71'; // Bright green
+      showDetectionOverlay = false;
       showModal = true;
       
       // Vibration feedback
@@ -345,6 +379,9 @@
       scanCount = 0;
       trackingActive = false;
       lastQRLocation = null;
+      progressPercent = 0;
+      detectionStartTime = 0;
+      showDetectionOverlay = false;
     }
   </script>
   
@@ -380,6 +417,16 @@
         class="scanner-canvas"
       ></canvas>
       
+      <!-- Detection overlay with visual progress -->
+      {#if showDetectionOverlay}
+        <div class="detection-overlay">
+          <div class="detection-message">{detectionMessage}</div>
+          <div class="progress-container">
+            <div class="progress-bar" style="width: {progressPercent}%"></div>
+          </div>
+        </div>
+      {/if}
+      
       <div class="scanner-overlay">
         <div class="camera-label">
           SCAN COUNTERPARTY QR CODE
@@ -387,7 +434,8 @@
         
         <div class="state-indicator" style="background-color: {boxColor}">
           {state === 'initial' ? 'Ready to scan' : 
-           state === 'detected' ? 'Counterparty detected' : 
+           state === 'detected' ? 'Escrow QR detected' : 
+           state === 'verified' ? 'Escrow verified' :
            state === 'completed' ? 'Escrow released!' : state}
         </div>
       </div>
@@ -408,6 +456,35 @@
       <div class="detail-row">
         <span class="detail-label">Condition:</span>
         <span class="detail-value">{condition}</span>
+      </div>
+    </div>
+    
+    <!-- Current state info (provides additional feedback) -->
+    <div class="state-display" style="background-color: {boxColor}20">
+      <div class="state-icon">
+        {#if state === 'initial'}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        {:else if state === 'detected'}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+        {:else if state === 'verified'}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        {:else if state === 'completed'}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        {/if}
+      </div>
+      <div class="state-info">
+        <div class="state-title">
+          {state === 'initial' ? 'Ready to Finalize' : 
+           state === 'detected' ? 'Escrow QR Detected' : 
+           state === 'verified' ? 'Escrow Verified' :
+           state === 'completed' ? 'Escrow Released!' : state}
+        </div>
+        <div class="state-description">
+          {state === 'initial' ? 'Scan counterparty\'s QR code to begin' : 
+           state === 'detected' ? 'Hold steady while verifying...' : 
+           state === 'verified' ? 'Escrow verification successful' :
+           state === 'completed' ? 'Tokens have been released' : ''}
+        </div>
       </div>
     </div>
     
@@ -462,16 +539,16 @@
         <span class="debug-value">{state}</span>
       </div>
       <div class="debug-row">
+        <span class="debug-label">Progress:</span>
+        <span class="debug-value">{progressPercent}%</span>
+      </div>
+      <div class="debug-row">
         <span class="debug-label">Tracking:</span>
         <span class="debug-value">{trackingActive ? 'Active' : 'Inactive'}</span>
       </div>
       <div class="debug-row">
         <span class="debug-label">Scans:</span>
         <span class="debug-value">{scanCount}</span>
-      </div>
-      <div class="debug-row">
-        <span class="debug-label">Last QR:</span>
-        <span class="debug-value">{lastScannedQR || 'None'}</span>
       </div>
     </div>
   </div>
@@ -598,6 +675,42 @@
       object-fit: cover; /* Match video dimensions */
     }
     
+    /* Detection overlay */
+    .detection-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(0, 0, 0, 0.7);
+      border-radius: 12px;
+      padding: 15px;
+      width: 80%;
+      max-width: 300px;
+      text-align: center;
+      z-index: 5;
+    }
+    
+    .detection-message {
+      color: white;
+      font-weight: bold;
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+    
+    .progress-container {
+      width: 100%;
+      background-color: rgba(255, 255, 255, 0.2);
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .progress-bar {
+      height: 100%;
+      background-color: #4CAF50;
+      transition: width 0.1s ease;
+    }
+    
     .scanner-overlay {
       position: absolute;
       top: 0;
@@ -619,6 +732,7 @@
       font-size: 12px;
       font-weight: bold;
       margin-top: 10px;
+      z-index: 10;
     }
     
     .state-indicator {
@@ -629,8 +743,51 @@
       font-weight: bold;
       font-size: 14px;
       transition: background-color 0.3s ease;
+      z-index: 10;
     }
     
+    /* State display */
+    .state-display {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      padding: 15px;
+      border-radius: 10px;
+      transition: background-color 0.3s ease;
+    }
+    
+    .state-icon {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background-color: white;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      color: #3498db; /* Blue default */
+    }
+    
+    .state-icon svg {
+      stroke: currentColor;
+    }
+    
+    .state-info {
+      flex: 1;
+    }
+    
+    .state-title {
+      font-weight: bold;
+      font-size: 16px;
+      margin-bottom: 3px;
+    }
+    
+    .state-description {
+      font-size: 14px;
+      color: #555;
+    }
+    
+    /* Error message */
     .error-message {
       padding: 10px;
       background-color: #fed7d7;
