@@ -1,0 +1,93 @@
+{
+  "app": {
+    "title": "My Progressive Web App",
+    "welcome": "Welcome to my PWA!",
+    "navigation": {
+      "home": "Home",
+      "camera": "Camera",
+      "qrScanner": "QR Scanner",
+      "wasm": "WASM Test",
+      "api": "API Test",
+      "settings": "Settings"
+    }
+  },
+  "camera": {
+    "title": "Camera Test",
+    "permission": "Camera permission is required",
+    "start": "Start Camera",
+    "stop": "Stop Camera",
+    "error": "Failed to access camera",
+    "notSupported": "Camera not supported in this browser"
+  },
+  "qrScanner": {
+    "title": "QR Code Scanner",
+    "start": "Start Scanning",
+    "stop": "Stop Scanning",
+    "detected": "QR Code Detected:",
+    "scanned": "Scanned QR Code:",
+    "noResults": "No QR codes detected yet",
+    "instructions": "Point your camera at a QR code"
+  },
+  "wasm": {
+    "title": "WASM Token Engine",
+    "loading": "Loading WASM module...",
+    "loaded": "WASM module loaded",
+    "error": "Error loading WASM module",
+    "inputLabel": "Input Text:",
+    "process": "Process Text",
+    "simpleResult": "Simple Processing Result:",
+    "verboseResult": "Verbose Processing Result:",
+    "notLoaded": "WASM module not loaded yet"
+  },
+  "api": {
+    "title": "API Connection Test",
+    "loading": "Loading data...",
+    "error": "Error connecting to API",
+    "success": "Successfully connected to API",
+    "refresh": "Refresh Data",
+    "identity": {
+      "title": "Identity API",
+      "noData": "No identity data available"
+    },
+    "bluetooth": {
+      "title": "Bluetooth API",
+      "fetch": "Fetch Bluetooth Devices",
+      "noDevices": "No devices available",
+      "connected": "Connected",
+      "disconnected": "Disconnected"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Success!",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "confirm": "Confirm",
+    "retry": "Retry",
+    "submit": "Submit"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "theme": {
+      "title": "Theme",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "camera": {
+      "title": "Camera Settings",
+      "preferFront": "Prefer Front Camera",
+      "preferBack": "Prefer Back Camera"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "enable": "Enable Notifications",
+      "disable": "Disable Notifications"
+    }
+  }
+}

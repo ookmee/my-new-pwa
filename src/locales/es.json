@@ -1,0 +1,93 @@
+{
+  "app": {
+    "title": "Mi Aplicación Web Progresiva",
+    "welcome": "¡Bienvenido a mi PWA!",
+    "navigation": {
+      "home": "Inicio",
+      "camera": "Cámara",
+      "qrScanner": "Escáner QR",
+      "wasm": "Prueba WASM",
+      "api": "Prueba API",
+      "settings": "Ajustes"
+    }
+  },
+  "camera": {
+    "title": "Prueba de Cámara",
+    "permission": "Se requiere permiso de cámara",
+    "start": "Iniciar Cámara",
+    "stop": "Detener Cámara",
+    "error": "Error al acceder a la cámara",
+    "notSupported": "La cámara no es compatible con este navegador"
+  },
+  "qrScanner": {
+    "title": "Escáner de Código QR",
+    "start": "Comenzar a Escanear",
+    "stop": "Detener Escaneo",
+    "detected": "Código QR Detectado:",
+    "scanned": "Código QR Escaneado:",
+    "noResults": "Aún no se han detectado códigos QR",
+    "instructions": "Apunta tu cámara a un código QR"
+  },
+  "wasm": {
+    "title": "Motor de Tokens WASM",
+    "loading": "Cargando módulo WASM...",
+    "loaded": "Módulo WASM cargado",
+    "error": "Error al cargar el módulo WASM",
+    "inputLabel": "Texto de Entrada:",
+    "process": "Procesar Texto",
+    "simpleResult": "Resultado de Procesamiento Simple:",
+    "verboseResult": "Resultado de Procesamiento Detallado:",
+    "notLoaded": "Módulo WASM aún no cargado"
+  },
+  "api": {
+    "title": "Prueba de Conexión API",
+    "loading": "Cargando datos...",
+    "error": "Error al conectar con la API",
+    "success": "Conexión exitosa con la API",
+    "refresh": "Actualizar Datos",
+    "identity": {
+      "title": "API de Identidad",
+      "noData": "No hay datos de identidad disponibles"
+    },
+    "bluetooth": {
+      "title": "API de Bluetooth",
+      "fetch": "Buscar Dispositivos Bluetooth",
+      "noDevices": "No hay dispositivos disponibles",
+      "connected": "Conectado",
+      "disconnected": "Desconectado"
+    }
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Ha ocurrido un error",
+    "success": "¡Éxito!",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "close": "Cerrar",
+    "confirm": "Confirmar",
+    "retry": "Reintentar",
+    "submit": "Enviar"
+  },
+  "settings": {
+    "title": "Ajustes",
+    "language": "Idioma",
+    "theme": {
+      "title": "Tema",
+      "light": "Claro",
+      "dark": "Oscuro",
+      "system": "Sistema"
+    },
+    "camera": {
+      "title": "Ajustes de Cámara",
+      "preferFront": "Preferir Cámara Frontal",
+      "preferBack": "Preferir Cámara Trasera"
+    },
+    "notifications": {
+      "title": "Notificaciones",
+      "enable": "Activar Notificaciones",
+      "disable": "Desactivar Notificaciones"
+    }
+  }
+}
