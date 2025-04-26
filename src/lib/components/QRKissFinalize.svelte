@@ -1,6 +1,7 @@
 <!-- src/lib/components/QRKissFinalize.svelte
- * Finalization component for agreements and transactions
- * Acts as a handshake mechanism for completing pre-arranged agreements
+ * Escrow/Agreement finalization component
+ * Uses a direct approach to resolve agreements like escrow
+ * Releases tokens that are in suspense on devices of both parties
  */
 -->
 <script>
@@ -10,19 +11,20 @@
     
     // Props
     export let mode = 'initiator'; // 'initiator' or 'responder'
-    export let agreementId = 'AGR-' + Math.random().toString(36).substring(2, 8).toUpperCase(); // Agreement ID
+    export let agreementId = 'AGR-' + Math.random().toString(36).substring(2, 6).toUpperCase(); // Short agreement ID
     export let onFinalize = (agreement) => console.log('Agreement finalized:', agreement);
     export let agreementType = 'transaction'; // Could be 'transaction', 'contract', 'access', etc.
-    export let agreementDescription = 'Token transfer'; // Human-readable description
+    export let agreementDescription = 'Token release'; // Human-readable description
     
     // Local state
     let videoElement;
     let canvasElement;
     let canvasContext;
     let animationFrameId = null;
+    let stream = null;
     let qrCodeData = '';
     let qrImageSrc = '';
-    let state = 'initial'; // 'initial', 'pending', 'completed', 'expired', 'error'
+    let state = 'initial'; // 'initial', 'detected', 'verified', 'completed', 'failed'
     let boxColor = '#3498db'; // Blue for initial state
     
     // Debug state
@@ -31,19 +33,10 @@
     let lastScanTime = 0;
     let error = '';
     
-    // Initialize and start camera
+    // Initialize QR and camera
     onMount(async () => {
       await generateQRCode();
       await startCamera();
-      startScanning();
-      
-      // Auto-expire after 2 minutes
-      setTimeout(() => {
-        if (state === 'initial' || state === 'pending') {
-          state = 'expired';
-          boxColor = '#95a5a6'; // Gray for expired
-        }
-      }, 120000);
     });
     
     onDestroy(() => {
@@ -52,22 +45,20 @@
     });
     
     async function generateQRCode() {
-      // Create a simple handshake code
-      // Format: [MODE]:[AGREEMENT_ID]:[TIMESTAMP]
-      const timestamp = Date.now();
-      
+      // Very simple QR with minimal data for better scanning
+      // Format: [MODE][AGREEMENT_ID]
       const codePrefix = mode === 'initiator' ? 'I' : 'R';
-      qrCodeData = `${codePrefix}:${agreementId}:${timestamp}`;
+      qrCodeData = `${codePrefix}${agreementId}`;
       
       // Generate QR with large blocks and max error correction
       qrImageSrc = await QRCode.toDataURL(qrCodeData, {
         errorCorrectionLevel: 'H', // Highest error correction
-        margin: 1, // Small margin for better scanning
-        scale: 16, // Very large scale
+        margin: 1, // Small margin
+        scale: 16, // Very large scale for better visibility
         version: 2 // Force low version (fewer modules = larger blocks)
       });
       
-      console.log("Generated handshake QR with data:", qrCodeData);
+      console.log("Generated finalize QR:", qrCodeData);
     }
     
     async function startCamera() {
@@ -80,7 +71,7 @@
           }
         };
         
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
         
         if (videoElement) {
           videoElement.srcObject = stream;
@@ -91,21 +82,25 @@
           canvasContext = canvasElement.getContext('2d');
           
           console.log("Camera started successfully");
+          startScanning();
         }
-      } catch (error) {
-        console.error('Error accessing camera:', error);
-        this.error = "Camera error: " + error.message;
+      } catch (err) {
+        console.error('Error accessing camera:', err);
+        error = "Camera error: " + err.message;
       }
     }
     
     function stopCamera() {
-      if (videoElement && videoElement.srcObject) {
-        videoElement.srcObject.getTracks().forEach(track => track.stop());
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
       }
     }
     
     function startScanning() {
-      scan();
+      if (!animationFrameId) {
+        animationFrameId = requestAnimationFrame(scan);
+      }
     }
     
     function stopScanning() {
@@ -116,7 +111,7 @@
     }
     
     function scan() {
-      if (!videoElement || !canvasContext) {
+      if (!videoElement || !canvasContext || !videoElement.srcObject) {
         animationFrameId = requestAnimationFrame(scan);
         return;
       }
@@ -169,11 +164,10 @@
             drawQRCodeOutline(code.location);
             
             // Process the QR code data
-            processHandshake(code.data);
+            processQRData(code.data);
           }
         } catch (error) {
           console.error('Error processing QR data:', error);
-          this.error = error.message;
         }
       }
       
@@ -197,62 +191,46 @@
       canvasContext.stroke();
     }
     
-    function processHandshake(data) {
+    function processQRData(data) {
       try {
-        // Parse the data (expected format: [MODE]:[AGREEMENT_ID]:[TIMESTAMP])
-        const parts = data.split(':');
-        
-        if (parts.length !== 3) {
-          throw new Error('Invalid QR format');
-        }
-        
-        const otherMode = parts[0];
-        const otherAgreementId = parts[1];
-        const timestamp = parseInt(parts[2]);
+        // Very simplified format processing
+        // Format: [MODE][AGREEMENT_ID] - e.g. 'IAGR-12345'
+        const firstChar = data.charAt(0);
+        const scannedAgreementId = data.substring(1);
         
         // Check if this is a valid counterparty
         const expectedOtherMode = mode === 'initiator' ? 'R' : 'I';
         
-        if (otherMode !== expectedOtherMode) {
-          console.log(`Scanned wrong party type: ${otherMode}, expected: ${expectedOtherMode}`);
-          return; // Not the right counterparty, keep scanning
-        }
-        
-        // Check if this is for our agreement
-        if (otherAgreementId !== agreementId) {
-          console.log(`Agreement ID mismatch: ${otherAgreementId}, ours: ${agreementId}`);
-          return; // Not our agreement, keep scanning
-        }
-        
-        // Check if the timestamp is recent (within last 5 minutes)
-        const now = Date.now();
-        if (now - timestamp > 5 * 60 * 1000) {
-          console.log('QR code expired');
-          state = 'expired';
-          boxColor = '#95a5a6'; // Gray for expired
+        if (firstChar !== expectedOtherMode) {
+          console.log(`Wrong party type: ${firstChar}, expected: ${expectedOtherMode}`);
           return;
         }
         
-        // If we got here, it's a valid handshake!
-        console.log("Valid handshake detected!");
-        
-        // Change state to pending if not already completed
-        if (state !== 'completed') {
-          state = 'pending';
-          boxColor = '#f39c12'; // Orange for pending
-          
-          // Auto-complete the handshake after a short delay
-          setTimeout(() => {
-            finalizeHandshake();
-          }, 1000);
+        // Check if this is for our agreement
+        if (scannedAgreementId !== agreementId) {
+          console.log(`Agreement ID mismatch: ${scannedAgreementId}, ours: ${agreementId}`);
+          return;
         }
-      } catch (error) {
-        console.error('Error processing handshake:', error);
-        this.error = error.message;
+        
+        // If we get here, it's a valid counterparty for our agreement
+        console.log("Valid finalization counterparty found!");
+        
+        if (state !== 'completed') {
+          state = 'verified';
+          boxColor = '#f39c12'; // Orange for verification
+          
+          // Auto-complete after a short delay for user feedback
+          setTimeout(() => {
+            completeFinalization();
+          }, 800);
+        }
+      } catch (err) {
+        console.error('Error processing QR data format:', err);
+        error = err.message;
       }
     }
     
-    function finalizeHandshake() {
+    function completeFinalization() {
       state = 'completed';
       boxColor = '#2ecc71'; // Green for completed
       
@@ -267,10 +245,11 @@
         agreementType,
         timestamp: Date.now(),
         status: 'completed',
-        initiatedBy: mode === 'initiator' ? 'self' : 'counterparty'
+        role: mode,
+        description: agreementDescription
       };
       
-      // Notify parent component
+      // Notify parent component after a brief delay for visual feedback
       setTimeout(() => {
         onFinalize(result);
       }, 500);
@@ -293,11 +272,11 @@
     
     function getStateDescription() {
       switch (state) {
-        case 'initial': return 'Ready for handshake';
-        case 'pending': return 'Handshake in progress...';
-        case 'completed': return 'Handshake completed!';
-        case 'expired': return 'Handshake expired';
-        case 'error': return 'Error: ' + error;
+        case 'initial': return 'Ready to scan';
+        case 'detected': return 'QR code detected';
+        case 'verified': return 'Verifying agreement...';
+        case 'completed': return 'Agreement finalized!';
+        case 'failed': return 'Finalization failed';
         default: return state;
       }
     }
@@ -310,6 +289,7 @@
       <div class="agreement-description">{agreementDescription}</div>
     </div>
   
+    <!-- Fixed layout - QR on top, camera on bottom for both roles -->
     <div class="layout-container">
       <!-- QR Code display -->
       <div class="qr-display" style="border-color: {boxColor}">
@@ -320,6 +300,11 @@
         <!-- QR Label -->
         <div class="qr-label">
           {mode === 'initiator' ? 'INITIATOR CODE' : 'RESPONDER CODE'}
+        </div>
+        
+        <!-- Show current QR data for debug -->
+        <div class="qr-data-display">
+          {qrCodeData}
         </div>
       </div>
       
@@ -349,11 +334,6 @@
       </div>
     </div>
     
-    <!-- Distance guide -->
-    <div class="distance-guide">
-      For best results, hold devices 12-18 inches apart
-    </div>
-    
     <!-- Mode selection -->
     <div class="mode-selector">
       <button 
@@ -379,22 +359,37 @@
         </svg>
         <span>Agreement Successfully Finalized!</span>
       </div>
-    {:else if state === 'expired'}
-      <div class="expired-message">
+    {:else if state === 'failed'}
+      <div class="error-message">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          <line x1="15" y1="9" x2="9" y2="15"></line>
+          <line x1="9" y1="9" x2="15" y2="15"></line>
         </svg>
-        <span>Handshake session has expired</span>
+        <span>Finalization Failed: {error}</span>
       </div>
     {/if}
     
+    <div class="instructions">
+      <div class="instruction-step">
+        <div class="step-number">1</div>
+        <div class="step-text">Each party selects their role: Initiator or Responder</div>
+      </div>
+      <div class="instruction-step">
+        <div class="step-number">2</div>
+        <div class="step-text">Hold devices so each camera can see the other's QR code</div>
+      </div>
+      <div class="instruction-step">
+        <div class="step-number">3</div>
+        <div class="step-text">When both codes are scanned, the agreement will finalize automatically</div>
+      </div>
+    </div>
+    
     <!-- QR Detection Debug -->
     <div class="debug-panel">
-      <h3>Handshake Debug</h3>
+      <h3>Debug Info</h3>
       <div class="debug-row">
-        <span class="debug-label">Status:</span>
+        <span class="debug-label">State:</span>
         <span class="debug-value">{state}</span>
       </div>
       <div class="debug-row">
@@ -406,7 +401,7 @@
         <span class="debug-value">{getTimeSince(lastScanTime)}</span>
       </div>
       <div class="debug-row">
-        <span class="debug-label">Data:</span>
+        <span class="debug-label">Last QR:</span>
         <span class="debug-value">{lastScannedQR || 'None'}</span>
       </div>
       {#if error}
@@ -482,7 +477,7 @@
     }
     
     .qr-image {
-      width: 280px; /* Very large for extreme visibility */
+      width: 280px;
       height: 280px;
     }
     
@@ -491,6 +486,16 @@
       font-weight: bold;
       color: #555;
       font-size: 14px;
+    }
+    
+    .qr-data-display {
+      margin-top: 5px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #666;
+      background-color: #f5f5f5;
+      padding: 4px 8px;
+      border-radius: 4px;
     }
     
     .scanner-container {
@@ -517,7 +522,6 @@
       left: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
     }
     
     .scanner-overlay {
@@ -553,16 +557,6 @@
       transition: background-color 0.3s ease;
     }
     
-    .distance-guide {
-      text-align: center;
-      background-color: #e0f7fa;
-      padding: 8px;
-      border-radius: 8px;
-      font-size: 14px;
-      color: #00838f;
-      margin-bottom: 10px;
-    }
-    
     .mode-selector {
       display: flex;
       gap: 8px;
@@ -590,7 +584,7 @@
       background-color: #e0e0e0;
     }
     
-    .success-message, .expired-message {
+    .success-message, .error-message {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -607,10 +601,46 @@
       border: 1px solid #c3e6cb;
     }
     
-    .expired-message {
+    .error-message {
       background-color: #f8d7da;
       color: #721c24;
       border: 1px solid #f5c6cb;
+    }
+    
+    .instructions {
+      background-color: #e8f4fd;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 10px 0;
+    }
+    
+    .instruction-step {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    .instruction-step:last-child {
+      margin-bottom: 0;
+    }
+    
+    .step-number {
+      width: 24px;
+      height: 24px;
+      background-color: #3498db;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-weight: bold;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    
+    .step-text {
+      font-size: 14px;
+      color: #2c3e50;
     }
     
     /* Debug panel */
