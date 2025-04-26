@@ -5,6 +5,7 @@
   import Counter from './lib/Counter.svelte'
   import Camera from './lib/components/Camera.svelte'
   import QRKiss from './lib/components/QRKiss.svelte'
+  import QRKissMirrored from './lib/components/QRKissMirrored.svelte'
   import QRDebugDemo from './lib/components/QRDebugDemo.svelte'
   import SimpleQRTest from './lib/components/SimpleQRTest.svelte'
   
@@ -42,6 +43,14 @@
           on:click={() => navigate('qrkiss')}
         >
           QR Kiss
+        </button>
+      </li>
+      <li>
+        <button 
+          class="px-4 py-2 rounded {currentPage === 'qrkiss-mirror' ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
+          on:click={() => navigate('qrkiss-mirror')}
+        >
+          QR Kiss (Mirrored)
         </button>
       </li>
       <li>
@@ -96,10 +105,17 @@
       <Camera />
     </div>
   {:else if currentPage === 'qrkiss'}
-    <!-- QR Kiss Section -->
+    <!-- QR Kiss Section (Original) -->
     <div class="max-w-lg mx-auto p-4 bg-gray-50 rounded-lg shadow">
       <h2 class="text-xl font-semibold mb-4">QR Kiss</h2>
       <QRKiss />
+    </div>
+  {:else if currentPage === 'qrkiss-mirror'}
+    <!-- QR Kiss Section (Mirrored) -->
+    <div class="max-w-lg mx-auto p-4 bg-gray-50 rounded-lg shadow">
+      <h2 class="text-xl font-semibold mb-4">QR Kiss (Mirror View)</h2>
+      <p class="text-sm text-gray-600 mb-4">This version shows a mirrored camera view to make alignment more intuitive. Like you're looking in a mirror!</p>
+      <QRKissMirrored />
     </div>
   {:else if currentPage === 'debug'}
     <!-- Debug Tools Section -->
