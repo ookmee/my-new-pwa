@@ -1,4 +1,4 @@
-<!-- QRTestPage.svelte -->
+<!-- src/lib/components/QRTestPage.svelte -->
 <script>
     import { onMount, onDestroy } from 'svelte';
     import jsQR from 'jsqr';

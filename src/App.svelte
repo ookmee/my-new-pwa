@@ -1,9 +1,12 @@
+<!-- src/App.svelte -->
 <script>
   import svelteLogo from './assets/svelte.svg'
   import viteLogo from '/vite.svg'
   import Counter from './lib/Counter.svelte'
   import Camera from './lib/components/Camera.svelte'
-  import QRKissDemo from './lib/components/QRKissDemo.svelte'
+  import QRKiss from './lib/components/QRKiss.svelte'
+  import QRDebugDemo from './lib/components/QRDebugDemo.svelte'
+  import SimpleQRTest from './lib/components/SimpleQRTest.svelte'
   
   // Simple navigation
   let currentPage = 'home';
@@ -13,11 +16,10 @@
   }
 </script>
 
-
 <main class="container mx-auto p-4">
   <!-- Navigation -->
   <nav class="mb-8">
-    <ul class="flex space-x-4 justify-center">
+    <ul class="flex space-x-4 justify-center flex-wrap">
       <li>
         <button 
           class="px-4 py-2 rounded {currentPage === 'home' ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
@@ -40,6 +42,22 @@
           on:click={() => navigate('qrkiss')}
         >
           QR Kiss
+        </button>
+      </li>
+      <li>
+        <button 
+          class="px-4 py-2 rounded {currentPage === 'debug' ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
+          on:click={() => navigate('debug')}
+        >
+          Debug Tools
+        </button>
+      </li>
+      <li>
+        <button 
+          class="px-4 py-2 rounded {currentPage === 'simpletest' ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
+          on:click={() => navigate('simpletest')}
+        >
+          Simple QR Test
         </button>
       </li>
     </ul>
@@ -78,10 +96,22 @@
       <Camera />
     </div>
   {:else if currentPage === 'qrkiss'}
-    <!-- QR Kiss Demo Section -->
+    <!-- QR Kiss Section -->
     <div class="max-w-lg mx-auto p-4 bg-gray-50 rounded-lg shadow">
-      <h2 class="text-xl font-semibold mb-4">QR Kiss Demo</h2>
-      <QRKissDemo />
+      <h2 class="text-xl font-semibold mb-4">QR Kiss</h2>
+      <QRKiss />
+    </div>
+  {:else if currentPage === 'debug'}
+    <!-- Debug Tools Section -->
+    <div class="w-full mx-auto p-4 bg-gray-50 rounded-lg shadow">
+      <h2 class="text-xl font-semibold mb-4">QR Debug Tools</h2>
+      <QRDebugDemo />
+    </div>
+  {:else if currentPage === 'simpletest'}
+    <!-- Simple QR Test Section -->
+    <div class="w-full mx-auto p-4 bg-gray-50 rounded-lg shadow">
+      <h2 class="text-xl font-semibold mb-4">Simple QR Test</h2>
+      <SimpleQRTest />
     </div>
   {/if}
 </main>
