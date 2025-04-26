@@ -1,11 +1,10 @@
-<script lang="ts">
+<script>
   import { onMount, onDestroy } from 'svelte';
-  import { _ } from 'svelte-i18n';
   
   export let facingMode = 'user'; // 'user' for front camera, 'environment' for back
   
-  let videoElement: HTMLVideoElement;
-  let stream: MediaStream | null = null;
+  let videoElement;
+  let stream = null;
   let cameraActive = false;
   let errorMessage = '';
   
@@ -22,7 +21,7 @@
       }
     } catch (err) {
       console.error('Error accessing camera:', err);
-      errorMessage = $_('camera.error');
+      errorMessage = 'Failed to access camera';
     }
   }
   
@@ -36,7 +35,7 @@
   
   onMount(() => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      errorMessage = $_('camera.notSupported');
+      errorMessage = 'Camera not supported in this browser';
     }
   });
   
@@ -58,14 +57,14 @@
         class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition-colors"
         on:click={startCamera}
       >
-        {$_('camera.start')}
+        Start Camera
       </button>
     {:else}
       <button 
         class="bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600 transition-colors"
         on:click={stopCamera}
       >
-        {$_('camera.stop')}
+        Stop Camera
       </button>
     {/if}
   </div>
