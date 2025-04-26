@@ -1,4 +1,11 @@
-<!-- src/lib/components/QRKissMirrored.svelte -->
+<!-- src/lib/components/QRKissMirrored.svelte
+ * Enhanced version with:
+ * 1. Simplified QR codes with larger blocks for better scanning
+ * 2. Explicit handling of mirroring issues
+ * 3. Fixed camera image processing
+ * 4. Minimal data in QR codes for testing
+ */
+-->
 <script>
   import { onMount, onDestroy } from 'svelte';
   import QRScannerMirrored from './QRScannerMirrored.svelte';
@@ -7,17 +14,16 @@
   
   // Props
   export let mode = 'sender'; // 'sender' or 'receiver'
-  export let userId = 'user-' + Math.random().toString(36).substring(2, 9); // Generate random user ID if not provided
+  export let userId = 'user-' + Math.random().toString(36).substring(2, 10).toUpperCase(); // Generate random short user ID
   export let onTransactionComplete = (transaction) => console.log('Transaction complete:', transaction);
   
   // Local state
   let qrCodeData = '';
   let qrImageSrc = '';
-  let amount = '';
+  let amount = '10'; // Default amount for testing
   let transactionState = 'initial'; // 'initial', 'aligned', 'blob2', 'blob3', 'complete'
   let transactionId = '';
   let boxColor = 'red';
-  let qrContainerElement;
   
   // Transaction result
   let transactionResult = null;
@@ -25,128 +31,76 @@
   
   // Debug state
   let lastScannedQR = '';
+  let lastProcessedQR = '';
+  let lastRawQRData = '';
   let scanCount = 0;
+  let processCount = 0;
+  let lastScanTime = 0;
+  let lastProcessTime = 0;
+  let qrScanError = '';
   
   // Get initial balance and generate QR
   onMount(() => {
-    generateInitialQR();
+    generateSimplifiedQR();
     balance = transactionManager.getBalance(userId);
-    console.log("QRKissMirrored mounted, mode:", mode);
   });
   
-  async function generateInitialQR() {
-    const initialData = JSON.stringify({
-      type: 'identity',
-      user_id: userId,
-      mode: mode
-    });
+  async function generateSimplifiedQR() {
+    // Create extremely simple data with minimal fields
+    // Using uppercase, short IDs, and minimal JSON structure
+    let initialData;
+    
+    if (mode === 'sender') {
+      initialData = `S:${userId}`; // S for sender + ID
+    } else {
+      initialData = `R:${userId}`; // R for receiver + ID
+    }
     
     qrCodeData = initialData;
-    qrImageSrc = await QRCode.toDataURL(initialData);
+    
+    // Generate QR with largest possible blocks and max error correction
+    qrImageSrc = await QRCode.toDataURL(initialData, {
+      errorCorrectionLevel: 'H', // Highest error correction
+      margin: 2, // Wider margin for better scanning
+      scale: 16, // Very large scale
+      version: 2 // Force low version (fewer modules = larger blocks)
+    });
+    
+    console.log("Generated simplified QR with data:", initialData);
   }
   
-  function handleQRScan(data) {
-    try {
-      // Add visual feedback that something was scanned
-      console.log("QR Scanned:", data);
-      lastScannedQR = data.substring(0, 30) + (data.length > 30 ? '...' : '');
-      scanCount++;
-      
-      // Add a log message and vibration
-      if (window.navigator.vibrate) {
-        window.navigator.vibrate(50); // Short vibration for scan feedback
-      }
-      
-      const scannedData = JSON.parse(data);
-      console.log("Parsed QR data:", scannedData);
-      
-      // Process based on current state and received data
-      switch (transactionState) {
-        case 'initial':
-          // Check if this is an identity QR from the opposite role
-          if (scannedData.type === 'identity' && 
-              scannedData.mode !== mode) {
-            
-            console.log("Detected opposite party identity QR");
-            
-            // We've detected the other party
-            transactionState = 'aligned';
-            boxColor = 'orange';
-            
-            // If sender, generate trade offer (Blob2)
-            if (mode === 'sender' && amount) {
-              setTimeout(generateBlob2, 200, scannedData.user_id);
-            }
-          }
-          break;
-          
-        case 'aligned':
-          // Receiver detects Blob2 from sender
-          if (mode === 'receiver' && 
-              scannedData.type === 'blob2') {
-            
-            console.log("Receiver detected Blob2");
-            
-            // Generate response (Blob3)
-            setTimeout(() => generateBlob3(scannedData), 200);
-          }
-          break;
-          
-        case 'blob2':
-          // Sender detects Blob3 from receiver
-          if (mode === 'sender' && 
-              scannedData.type === 'blob3' && 
-              scannedData.transaction_id === transactionId) {
-            
-            console.log("Sender detected Blob3");
-            
-            // Transaction complete
-            completeTransaction(scannedData);
-          }
-          break;
-      }
-    } catch (error) {
-      console.error('Error processing QR data:', error);
-    }
-  }
-  
+  // For step 2 - even simpler data format
   async function generateBlob2(receiverId) {
-    // Generate a unique transaction ID
-    transactionId = 'tx-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+    // Generate a simple, short transaction ID
+    transactionId = 'TX' + Date.now().toString().substring(8, 13);
     
-    const blob2 = {
-      type: 'blob2',
-      user_id: userId,
-      receiver_id: receiverId || 'unknown-receiver', // Use provided ID or fallback
-      amount: parseFloat(amount),
-      transaction_id: transactionId,
-      timestamp: Date.now()
-    };
+    // Create minimal data for blob2
+    const blob2 = `S:${userId}:${amount}:${transactionId}`;
     
-    qrCodeData = JSON.stringify(blob2);
-    qrImageSrc = await QRCode.toDataURL(qrCodeData);
+    qrCodeData = blob2;
+    qrImageSrc = await generateSimpleQR(blob2);
     transactionState = 'blob2';
     
     // Flash effect on border
     flashBox();
   }
   
-  async function generateBlob3(blob2Data) {
-    const blob3 = {
-      type: 'blob3',
-      response: 'yes',
-      transaction_id: blob2Data.transaction_id,
-      sender_id: blob2Data.user_id,
-      receiver_id: userId,
-      amount: blob2Data.amount,
-      timestamp: Date.now()
-    };
+  // For step 3 - receiver response
+  async function generateBlob3(simpleData) {
+    // Parse simple format data: S:userId:amount:txId
+    const parts = simpleData.split(':');
+    const senderId = parts[1];
+    const amountValue = parts[2];
+    const txId = parts[3];
     
     // Store transaction ID
-    transactionId = blob2Data.transaction_id;
+    transactionId = txId;
     
-    qrCodeData = JSON.stringify(blob3);
-    qrImageSrc = await QRCode.toDataURL(qrCodeData);
+    // Create minimal data for blob3
+    const blob3 = `R:${senderId}:${userId}:${amountValue}:${txId}`;
+    
+    qrCodeData = blob3;
+    qrImageSrc = await generateSimpleQR(blob3);
     transactionState = 'blob3';
     
     // Flash effect on border
@@ -154,9 +108,9 @@
     
     // Process transaction on receiver side
     const transaction = {
-      id: blob2Data.transaction_id,
-      amount: blob2Data.amount,
-      sender: blob2Data.user_id,
+      id: txId,
+      amount: parseFloat(amountValue),
+      sender: senderId,
       receiver: userId,
       timestamp: Date.now()
     };
@@ -169,7 +123,6 @@
       balance = result.receiverBalance;
     } else {
       console.error('Transaction failed:', result.error);
-      // You could display an error message here
     }
     
     // Auto-complete for receiver after a short delay
@@ -178,6 +131,97 @@
         completeTransaction(blob3);
       }
     }, 1000);
+  }
+  
+  // Helper to generate simplified QR
+  async function generateSimpleQR(data) {
+    return await QRCode.toDataURL(data, {
+      errorCorrectionLevel: 'H',
+      margin: 2,
+      scale: 16,
+      version: 2
+    });
+  }
+  
+  function handleQRScan(data) {
+    try {
+      // Log the raw scanned data
+      console.log("Raw QR Scanned:", data);
+      lastRawQRData = data;
+      lastScannedQR = data;
+      scanCount++;
+      lastScanTime = Date.now();
+      qrScanError = '';
+      
+      // Add haptic feedback
+      if (window.navigator.vibrate) {
+        window.navigator.vibrate(50);
+      }
+      
+      // Process based on simplified format
+      processSimpleQRFormat(data);
+      
+    } catch (error) {
+      console.error('Error handling QR scan:', error);
+      qrScanError = error.message;
+    }
+  }
+  
+  function processSimpleQRFormat(data) {
+    try {
+      // Check data format for simplified format
+      // Format: [S/R]:userId:[amount]:[txId]
+      
+      const firstChar = data.charAt(0);
+      
+      // Record that we processed this QR
+      lastProcessedQR = `Type: ${firstChar}, data: ${data.substring(0, 20)}...`;
+      processCount++;
+      lastProcessTime = Date.now();
+      
+      // Process based on current state and the simplified format
+      switch (transactionState) {
+        case 'initial':
+          // Check if opposite role (S vs R)
+          if ((mode === 'sender' && firstChar === 'R') || 
+              (mode === 'receiver' && firstChar === 'S')) {
+            
+            console.log("Detected opposite party identity QR");
+            
+            // We've detected the other party
+            transactionState = 'aligned';
+            boxColor = 'orange';
+            
+            // If sender, generate blob2
+            if (mode === 'sender' && amount) {
+              setTimeout(generateBlob2, 200, data.split(':')[1]);
+            }
+          }
+          break;
+          
+        case 'aligned':
+          // Receiver detects Blob2 from sender (S:userId:amount:txId)
+          if (mode === 'receiver' && firstChar === 'S' && data.split(':').length >= 4) {
+            console.log("Receiver detected Blob2");
+            setTimeout(() => generateBlob3(data), 200);
+          }
+          break;
+          
+        case 'blob2':
+          // Sender detects Blob3 from receiver (R:senderId:receiverId:amount:txId)
+          if (mode === 'sender' && firstChar === 'R') {
+            const parts = data.split(':');
+            if (parts.length >= 5 && parts[4] === transactionId) {
+              console.log("Sender detected Blob3");
+              completeTransaction(data);
+            }
+          }
+          break;
+      }
+    } catch (parseError) {
+      console.error('Error processing QR data:', parseError);
+      lastProcessedQR = "ERROR: Invalid format";
+    }
   }
   
   function completeTransaction(finalData) {
@@ -191,11 +235,15 @@
     
     // If sender, process the transaction at this point
     if (mode === 'sender') {
+      const parts = finalData.split(':');
+      const amountValue = parts[3];
+      const receiverId = parts[2];
+      
       const transaction = {
         id: transactionId,
-        amount: parseFloat(amount),
+        amount: parseFloat(amountValue),
         sender: userId,
-        receiver: finalData.receiver_id,
+        receiver: receiverId,
         timestamp: Date.now()
       };
       
@@ -207,7 +255,6 @@
         balance = result.senderBalance;
       } else {
         console.error('Transaction failed:', result.error);
-        // You could display an error message here
       }
     }
     
@@ -219,10 +266,7 @@
   
   function flashBox() {
     const originalColor = boxColor;
-    
-    // Quick flash effect
     boxColor = 'white';
-    
     setTimeout(() => {
       boxColor = originalColor;
     }, 200);
@@ -241,13 +285,11 @@
       if (transactionState === 'aligned') {
         generateBlob2();
       } else if (transactionState === 'initial') {
-        // Even if initial, show we're ready on sender side
         boxColor = 'orange';
         transactionState = 'aligned';
-        generateBlob2(); // Auto-generate blob2 even without seeing receiver
+        generateBlob2(); 
       }
     } else if (transactionState === 'initial' && mode === 'receiver') {
-      // Receiver is showing they're ready to receive
       boxColor = 'orange';
       transactionState = 'aligned';
     }
@@ -259,27 +301,56 @@
     transactionState = 'initial';
     boxColor = 'red';
     transactionResult = null;
-    amount = '';
     // Generate new QR code
-    generateInitialQR();
+    generateSimplifiedQR();
+  }
+  
+  function getTimeSince(timestamp) {
+    if (!timestamp) return 'N/A';
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    return seconds + 's ago';
   }
 </script>
 
 <div class="qr-kiss-container">
-  <!-- QR Code display - positioned above the camera view -->
-  <div class="qr-display" style="border-color: {boxColor}">
-    {#if qrImageSrc}
-      <img src={qrImageSrc} alt="QR Code" class="qr-image" />
-    {/if}
+  <!-- Layout changes based on mode - QR at bottom for receiver for better alignment -->
+  <div class="layout-container {mode === 'receiver' ? 'receiver-layout' : 'sender-layout'}">
+    <!-- QR Code display -->
+    <div class="qr-display" style="border-color: {boxColor}">
+      {#if qrImageSrc}
+        <img src={qrImageSrc} alt="QR Code" class="qr-image" />
+      {/if}
+      
+      <!-- QR Label -->
+      <div class="qr-label">
+        {mode === 'sender' ? 'YOUR QR (SCAN ME)' : 'YOUR QR (SCAN ME)'}
+      </div>
+      
+      <!-- Show current QR data for debug -->
+      <div class="qr-data-display">
+        {qrCodeData}
+      </div>
+    </div>
+    
+    <!-- QR Scanner with mirrored view -->
+    <div class="scanner-container">
+      <QRScannerMirrored onScan={handleQRScan} boxSize={240} mirrored={true}>
+        <div class="scanner-overlay">
+          <div class="camera-label">
+            CAMERA VIEW
+          </div>
+          <div class="scan-indicator" class:active={lastScannedQR !== ''}>
+            {lastProcessedQR ? '✓' : ''}
+          </div>
+          <div class="status-indicator" style="background-color: {boxColor}"></div>
+        </div>
+      </QRScannerMirrored>
+    </div>
   </div>
   
-  <!-- QR Scanner with mirrored view -->
-  <div class="scanner-container">
-    <QRScannerMirrored onScan={handleQRScan} boxSize={240} mirrored={true}>
-      <div class="scanner-overlay">
-        <div class="status-indicator" style="background-color: {boxColor}"></div>
-      </div>
-    </QRScannerMirrored>
+  <!-- Distance guide -->
+  <div class="distance-guide">
+    For best results, hold devices 12-18 inches apart
   </div>
   
   <!-- Balance display (outside QR scanner) -->
@@ -353,11 +424,64 @@
       </div>
     {/if}
     
-    <!-- Debug info -->
+    <!-- DEBUG: Raw QR data display -->
+    <div class="raw-data-display">
+      <h4>RAW SCANNED DATA:</h4>
+      <div class="raw-data">{lastRawQRData || 'None'}</div>
+      {#if qrScanError}
+        <div class="error-message">{qrScanError}</div>
+      {/if}
+    </div>
+    
+    <!-- Debug info - Enhanced with read vs. processed distinction -->
     <div class="debug-info">
-      <div>Mode: <strong>{mode}</strong></div>
-      <div>Last QR scan: {lastScannedQR || 'None'}</div>
-      <div>Scan count: {scanCount}</div>
+      <h3>Debug Info</h3>
+      <div class="debug-section">
+        <div class="debug-row">
+          <span class="debug-label">Mode:</span>
+          <span class="debug-value">{mode}</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">State:</span>
+          <span class="debug-value">{transactionState}</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Box Color:</span>
+          <span class="debug-value" style="color: {boxColor};">{boxColor}</span>
+        </div>
+      </div>
+      
+      <div class="debug-section">
+        <h4>QR Reading</h4>
+        <div class="debug-row">
+          <span class="debug-label">Scan Count:</span>
+          <span class="debug-value">{scanCount}</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Last Scan:</span>
+          <span class="debug-value">{getTimeSince(lastScanTime)}</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Last QR Read:</span>
+          <span class="debug-value">{lastScannedQR || 'None'}</span>
+        </div>
+      </div>
+      
+      <div class="debug-section">
+        <h4>QR Processing</h4>
+        <div class="debug-row">
+          <span class="debug-label">Process Count:</span>
+          <span class="debug-value">{processCount}</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Last Process:</span>
+          <span class="debug-value">{getTimeSince(lastProcessTime)}</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Last QR Processed:</span>
+          <span class="debug-value">{lastProcessedQR || 'None'}</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -373,10 +497,24 @@
     gap: 15px;
   }
   
+  /* Layout container with flexible direction based on mode */
+  .layout-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+  }
+  
+  /* Reverse order for receiver mode for better alignment */
+  .receiver-layout {
+    flex-direction: column-reverse;
+  }
+  
   .qr-display {
     width: 100%;
     padding: 15px;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     background-color: white;
@@ -389,10 +527,30 @@
   }
   
   .qr-image {
-    width: 150px;
-    height: 150px;
-    /* Don't mirror the QR code itself - it needs to be readable */
-    transform: scaleX(1);
+    width: 280px; /* Very large for extreme visibility */
+    height: 280px;
+    transform: scaleX(1); /* Ensure not mirrored */
+  }
+  
+  .qr-label {
+    margin-top: 10px;
+    font-weight: bold;
+    color: #555;
+    font-size: 14px;
+  }
+  
+  .qr-data-display {
+    margin-top: 5px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #666;
+    background-color: #f5f5f5;
+    padding: 4px 8px;
+    border-radius: 4px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   
   .scanner-container {
@@ -409,13 +567,58 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .camera-label {
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    margin-top: 10px;
+  }
+  
+  .scan-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0.3);
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 20px;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.3s, background-color 0.3s;
+  }
+  
+  .scan-indicator.active {
+    opacity: 1;
+    background-color: rgba(76, 175, 80, 0.7);
   }
   
   .status-indicator {
     height: 15px;
     width: 100%;
     transition: background-color 0.3s ease;
+  }
+  
+  .distance-guide {
+    text-align: center;
+    background-color: #e0f7fa;
+    padding: 8px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #00838f;
+    margin-bottom: 10px;
   }
   
   .balance-display {
@@ -526,13 +729,80 @@
     margin: 5px 0;
   }
   
+  /* Raw data display */
+  .raw-data-display {
+    margin-top: 15px;
+    padding: 8px;
+    background-color: #fffde7;
+    border: 1px solid #ffd54f;
+    border-radius: 4px;
+  }
+  
+  .raw-data-display h4 {
+    margin: 0 0 5px 0;
+    font-size: 14px;
+    color: #ff6f00;
+  }
+  
+  .raw-data {
+    font-family: monospace;
+    font-size: 12px;
+    word-break: break-all;
+  }
+  
+  .error-message {
+    color: #d32f2f;
+    font-size: 12px;
+    margin-top: 5px;
+  }
+  
+  /* Enhanced debug info styling with sections */
   .debug-info {
     margin-top: 15px;
     padding: 10px;
-    background-color: #e0e0e0;
-    border-radius: 4px;
+    background-color: #333;
+    border-radius: 8px;
     font-size: 14px;
     font-family: monospace;
-    color: #666;
+    color: #eee;
+  }
+  
+  .debug-info h3 {
+    margin: 0 0 10px 0;
+    font-size: 16px;
+    color: #fff;
+    border-bottom: 1px solid #555;
+    padding-bottom: 5px;
+  }
+  
+  .debug-info h4 {
+    margin: 10px 0 5px 0;
+    font-size: 14px;
+    color: #8bc34a;
+  }
+  
+  .debug-section {
+    margin-bottom: 10px;
+    padding: 5px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+  
+  .debug-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+  }
+  
+  .debug-label {
+    color: #888;
+  }
+  
+  .debug-value {
+    font-weight: bold;
+    max-width: 70%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

@@ -5,7 +5,8 @@
   import Counter from './lib/Counter.svelte'
   import Camera from './lib/components/Camera.svelte'
   import QRKiss from './lib/components/QRKiss.svelte'
-  import QRKissMirrored from './lib/components/QRKissMirrored.svelte'
+  import QRKissDirect from './lib/components/QRKissDirect.svelte'
+  import QRKissFinalize from './lib/components/QRKissFinalize.svelte'
   import QRDebugDemo from './lib/components/QRDebugDemo.svelte'
   import SimpleQRTest from './lib/components/SimpleQRTest.svelte'
   
@@ -14,6 +15,12 @@
   
   function navigate(page) {
     currentPage = page;
+  }
+  
+  // Handle agreement finalization
+  function handleFinalize(agreement) {
+    console.log('Agreement finalized:', agreement);
+    alert(`Agreement ${agreement.agreementId} successfully finalized!`);
   }
 </script>
 
@@ -47,10 +54,18 @@
       </li>
       <li>
         <button 
-          class="px-4 py-2 rounded {currentPage === 'qrkiss-mirror' ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
-          on:click={() => navigate('qrkiss-mirror')}
+          class="px-4 py-2 rounded {currentPage === 'qrkiss-direct' ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
+          on:click={() => navigate('qrkiss-direct')}
         >
-          QR Kiss (Mirrored)
+          QR Kiss (Direct)
+        </button>
+      </li>
+      <li>
+        <button 
+          class="px-4 py-2 rounded {currentPage === 'qrkiss-finalize' ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
+          on:click={() => navigate('qrkiss-finalize')}
+        >
+          QR Kiss (Finalize)
         </button>
       </li>
       <li>
@@ -110,12 +125,24 @@
       <h2 class="text-xl font-semibold mb-4">QR Kiss</h2>
       <QRKiss />
     </div>
-  {:else if currentPage === 'qrkiss-mirror'}
-    <!-- QR Kiss Section (Mirrored) -->
+  {:else if currentPage === 'qrkiss-direct'}
+    <!-- QR Kiss Section (Direct Version) -->
     <div class="max-w-lg mx-auto p-4 bg-gray-50 rounded-lg shadow">
-      <h2 class="text-xl font-semibold mb-4">QR Kiss (Mirror View)</h2>
-      <p class="text-sm text-gray-600 mb-4">This version shows a mirrored camera view to make alignment more intuitive. Like you're looking in a mirror!</p>
-      <QRKissMirrored />
+      <h2 class="text-xl font-semibold mb-4">QR Kiss (Direct Version)</h2>
+      <p class="text-sm text-gray-600 mb-4">This version uses a simplified approach without mirroring for better QR detection.</p>
+      <QRKissDirect />
+    </div>
+  {:else if currentPage === 'qrkiss-finalize'}
+    <!-- QR Kiss Finalization Section -->
+    <div class="max-w-lg mx-auto p-4 bg-gray-50 rounded-lg shadow">
+      <h2 class="text-xl font-semibold mb-4">QR Kiss (Finalization)</h2>
+      <p class="text-sm text-gray-600 mb-4">Agreement finalization handshake mechanism.</p>
+      <QRKissFinalize 
+        agreementId="JUICE-123456"
+        agreementType="transaction"
+        agreementDescription="Transfer of 25 JUICE tokens"
+        onFinalize={handleFinalize}
+      />
     </div>
   {:else if currentPage === 'debug'}
     <!-- Debug Tools Section -->
