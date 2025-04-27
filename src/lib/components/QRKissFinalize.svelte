@@ -1,6 +1,7 @@
 <!-- src/lib/components/QRKissFinalize.svelte
- * Escrow Finalization Component
- * With enhanced visual feedback for scanning progress
+ * Improved version with drastically different QR presentations
+ * Supports the full agreement finalization flow
+ * Prevents confusion between devices with unique shapes
  */
 -->
 <script>
@@ -9,10 +10,11 @@
     import QRCode from 'qrcode';
     
     // Props
-    export let escrowId = 'Ɉ' + Math.random().toString(36).substring(2, 6).toUpperCase();
-    export let onFinalize = (result) => console.log('Escrow finalized:', result);
+    export let agreementId = 'A' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    export let onFinalize = (result) => console.log('Agreement finalized:', result);
     export let amount = '500 JUICE';
-    export let condition = 'Mutual Agreement';
+    export let agreementType = 'escrow'; // 'escrow', 'bet', 'settlement', 'transaction'
+    export let details = 'Mutual Agreement';
     export let parties = 'Alice & Bob';
     
     // Local state
@@ -23,15 +25,15 @@
     let stream = null;
     let qrData = '';
     let qrImage = null;
-    let state = 'initial'; // 'initial', 'detected', 'verified', 'completed'
+    let state = 'initial'; // 'initial', 'scanning', 'detected', 'verified', 'completed'
     let boxColor = '#3498db'; // Blue for initial state
     let showModal = false;
-    let securityCode = null;
+    let confirmationCode = null;
     
     // Visual feedback state
     let progressPercent = 0;
     let detectionStartTime = 0;
-    let requiredDetectionTime = 1000; // 1 second of continuous detection
+    let requiredDetectionTime = 1500; // 1.5 seconds of continuous detection
     let detectionMessage = '';
     let showDetectionOverlay = false;
     
@@ -46,6 +48,17 @@
     // Tracking state - for active QR tracking
     let lastQRLocation = null;
     let trackingActive = false;
+    
+    // NEW: QR presentation role and state
+    export let role = 'A'; // 'A' or 'B' to determine presentation shape
+    let otherRole = role === 'A' ? 'B' : 'A';
+    let focusedOnWrongQR = false;
+    
+    // NEW: Flow state for agreement setup
+    let flowStep = 'prepare'; // 'prepare', 'configure', 'finalize'
+    let counterpartyIdentified = false;
+    let counterpartyId = '';
+    let agreementConfigured = false;
     
     // Generate QR code on mount
     onMount(() => {
@@ -62,12 +75,14 @@
       stopCamera();
     });
     
-    // Generate a simple QR code
+    // Generate a QR code with the appropriate shape and data
     async function generateQR() {
       try {
-        qrData = `FINALIZE:${escrowId}`;
+        // Include role in QR data for identification
+        qrData = `FINALIZE:${agreementId}:${role}`;
         console.log("Generating QR code with data:", qrData);
         
+        // Generate the QR code
         qrImage = await QRCode.toDataURL(qrData, {
           errorCorrectionLevel: 'H',
           margin: 1,
@@ -181,8 +196,8 @@
           centerY = canvasElement.height / 2 - boxSize/2;
         }
         
-        // Draw scan box - Make it more visible
-        canvasContext.strokeStyle = boxColor;
+        // Draw scan box - adjusted color based on whether we might be looking at wrong QR
+        canvasContext.strokeStyle = focusedOnWrongQR ? '#ff0000' : boxColor; // Red if wrong QR
         canvasContext.lineWidth = 6; // Thicker line
         canvasContext.strokeRect(centerX, centerY, boxSize, boxSize);
         
@@ -233,6 +248,34 @@
           scanCount++;
           lastScannedQR = code.data;
           
+          // Check if this is our own QR code by looking for our role in the QR data
+          const scannedData = code.data;
+          if (scannedData.includes(`:${role}`)) {
+            focusedOnWrongQR = true;
+            console.log("Warning: Detected own QR code, try scanning the other device");
+            
+            // Reset tracking to encourage looking elsewhere
+            trackingActive = false;
+            lastQRLocation = null;
+            
+            // Display warning to user
+            detectionMessage = "Move camera to scan other party's QR!";
+            showDetectionOverlay = true;
+            progressPercent = 0;
+            
+            // Vibration warning
+            if (navigator.vibrate) {
+              navigator.vibrate([50, 100, 50]); // Warning pattern
+            }
+            
+            // Continue to next frame
+            animationFrameId = requestAnimationFrame(scan);
+            return;
+          }
+          
+          // Reset wrong QR warning if we're now looking at the right one
+          focusedOnWrongQR = false;
+          
           // Update tracking information if we have a location
           if (code.location) {
             // Calculate center of QR code
@@ -252,11 +295,17 @@
             navigator.vibrate(50);
           }
           
-          // Process the QR code
-          processQR(code.data);
+          // Process the QR code based on flow step
+          if (flowStep === 'prepare') {
+            // In preparation step, identify counterparty
+            processCounterpartyQR(code.data);
+          } else if (flowStep === 'finalize') {
+            // In finalization step, verify agreement
+            processFinalizationQR(code.data);
+          }
         } else {
           // If we don't find a QR code, reset detection progress
-          if (detectionStartTime !== 0) {
+          if (detectionStartTime !== 0 && !focusedOnWrongQR) {
             detectionStartTime = 0;
             progressPercent = 0;
             showDetectionOverlay = false;
@@ -295,15 +344,68 @@
       canvasContext.stroke();
     }
     
-    function processQR(data) {
-      // Simple validation - check if this is a finalization QR for our escrow
+    // Process counterparty identification QR (preparation step)
+    function processCounterpartyQR(data) {
+      // Parse identification QR
       if (!data.startsWith('FINALIZE:')) return;
       
-      const scannedEscrowId = data.substring(9); // Remove 'FINALIZE:' prefix
+      const parts = data.split(':');
+      if (parts.length < 3) return;
       
-      // Check if escrow ID matches
-      if (scannedEscrowId !== escrowId) {
-        console.log(`Escrow ID mismatch: ${scannedEscrowId} vs ${escrowId}`);
+      const scannedAgreementId = parts[1];
+      const scannedRole = parts[2];
+      
+      // Make sure the roles are complementary
+      if (scannedRole === role) {
+        console.log("Detected same role QR, ignoring");
+        focusedOnWrongQR = true;
+        return;
+      }
+      
+      // Store counterparty info
+      counterpartyId = scannedAgreementId;
+      
+      // Update status - identified counterparty
+      counterpartyIdentified = true;
+      detectionMessage = 'Counterparty Identified';
+      showDetectionOverlay = true;
+      
+      // Finalize identification after a short delay
+      setTimeout(() => {
+        showDetectionOverlay = false;
+        // If we were in preparation step, move to configuration
+        if (flowStep === 'prepare') {
+          flowStep = 'configure';
+        }
+      }, 1500);
+      
+      // Success vibration
+      if (navigator.vibrate) {
+        navigator.vibrate(200);
+      }
+    }
+    
+    // Process finalization QR
+    function processFinalizationQR(data) {
+      // Validate QR is for finalization
+      if (!data.startsWith('FINALIZE:')) return;
+      
+      const parts = data.split(':');
+      if (parts.length < 3) return;
+      
+      const scannedAgreementId = parts[1];
+      const scannedRole = parts[2];
+      
+      // Check if agreement ID matches
+      if (scannedAgreementId !== agreementId) {
+        console.log(`Agreement ID mismatch: ${scannedAgreementId} vs ${agreementId}`);
+        return;
+      }
+      
+      // Make sure we're scanning the other role's QR
+      if (scannedRole === role) {
+        console.log("Detected same role QR, ignoring");
+        focusedOnWrongQR = true;
         return;
       }
       
@@ -313,7 +415,7 @@
         if (detectionStartTime === 0) {
           detectionStartTime = Date.now();
           showDetectionOverlay = true;
-          detectionMessage = 'Escrow Detected';
+          detectionMessage = 'Agreement Detected';
           state = 'detected';
           boxColor = '#f39c12'; // Orange
         }
@@ -324,13 +426,13 @@
         
         // Check if we've maintained detection long enough
         if (elapsedTime >= requiredDetectionTime) {
-          // Escrow verified after continuous detection
+          // Agreement verified after continuous detection
           state = 'verified';
-          detectionMessage = 'Escrow Verified';
+          detectionMessage = 'Agreement Verified';
           boxColor = '#27ae60'; // Green
           
-          // Generate security code
-          securityCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+          // Generate confirmation code
+          confirmationCode = Math.random().toString(36).substring(2, 6).toUpperCase();
           
           // Complete after short delay
           setTimeout(() => {
@@ -353,11 +455,13 @@
       
       // Create result object
       const result = {
-        escrowId,
+        agreementId,
+        agreementType,
         timestamp: Date.now(),
-        status: 'RELEASED',
-        securityCode,
-        parties: parties
+        status: 'FINALIZED',
+        confirmationCode,
+        parties: parties,
+        amount: amount
       };
       
       // Notify parent component
@@ -374,7 +478,7 @@
       state = 'initial';
       boxColor = '#3498db';
       showModal = false;
-      securityCode = null;
+      confirmationCode = null;
       lastScannedQR = '';
       scanCount = 0;
       trackingActive = false;
@@ -382,111 +486,308 @@
       progressPercent = 0;
       detectionStartTime = 0;
       showDetectionOverlay = false;
+      focusedOnWrongQR = false;
+      flowStep = 'prepare';
+      counterpartyIdentified = false;
+      counterpartyId = '';
+      agreementConfigured = false;
+    }
+    
+    function toggleRole() {
+      role = role === 'A' ? 'B' : 'A';
+      otherRole = role === 'A' ? 'B' : 'A';
+      generateQR(); // Regenerate QR with new role
+    }
+    
+    // Configure the agreement and move to finalization step
+    function configureAgreement() {
+      // Here you would typically validate all required fields
+      if (!counterpartyIdentified || !amount || !agreementType) {
+        alert('Please complete all required fields');
+        return;
+      }
+      
+      agreementConfigured = true;
+      flowStep = 'finalize';
+      generateQR(); // Regenerate QR for finalization
+    }
+    
+    // For first-time setup, generates a fresh agreement ID
+    function generateNewAgreement() {
+      agreementId = 'A' + Math.random().toString(36).substring(2, 6).toUpperCase();
+      generateQR();
     }
   </script>
   
-  <div class="escrow-container">
-    <!-- Escrow header info - simplified for visibility -->
-    <div class="escrow-header">
-      <div class="escrow-id">{escrowId}</div>
-      <div class="escrow-amount">{amount}</div>
+  <div class="agreement-container">
+    <!-- Role toggle -->
+    <div class="role-container">
+      <span class="role-label">Your role:</span>
+      <button class="role-toggle" on:click={toggleRole}>
+        {role === 'A' ? '🔺 Triangle (A)' : '⬤ Circle (B)'}
+      </button>
     </div>
     
-    <!-- QR Code display FIRST - now at top for cross-device scanning -->
-    <div class="qr-display" style="border-color: {boxColor}">
-      {#if qrImage}
-        <img src={qrImage} alt="QR Code" class="qr-image" />
-      {/if}
-      
-      <div class="qr-label">
-        YOUR QR CODE (SHOW TO COUNTERPARTY)
+    <!-- Agreement header -->
+    <div class="agreement-header">
+      <div class="agreement-id">{agreementId}</div>
+      <div class="agreement-amount">{amount}</div>
+    </div>
+    
+    <!-- Flow step indicator -->
+    <div class="flow-step-container">
+      <div class="step-indicator {flowStep === 'prepare' ? 'active' : ''}">
+        <div class="step-number">1</div>
+        <div class="step-label">Identify</div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step-indicator {flowStep === 'configure' ? 'active' : ''}">
+        <div class="step-number">2</div>
+        <div class="step-label">Configure</div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step-indicator {flowStep === 'finalize' ? 'active' : ''}">
+        <div class="step-number">3</div>
+        <div class="step-label">Finalize</div>
       </div>
     </div>
     
-    <!-- Camera view AFTER QR for scanning -->
-    <div class="scanner-container">
-      <video 
-        bind:this={videoElement} 
-        autoplay 
-        playsinline 
-        muted
-        class="scanner-video"
-      ></video>
-      <canvas 
-        bind:this={canvasElement} 
-        class="scanner-canvas"
-      ></canvas>
-      
-      <!-- Detection overlay with visual progress -->
-      {#if showDetectionOverlay}
-        <div class="detection-overlay">
-          <div class="detection-message">{detectionMessage}</div>
-          <div class="progress-container">
-            <div class="progress-bar" style="width: {progressPercent}%"></div>
+    <!-- Step content changes based on current flow step -->
+    {#if flowStep === 'prepare'}
+      <!-- Preparation step: Identify counterparty -->
+      <div class="step-content">
+        <h3>Identify Your Counterparty</h3>
+        <p>Scan each other's QR codes to establish connection.</p>
+        
+        <!-- QR Code display with role-based shape -->
+        <div class="qr-display role-{role}" style="border-color: {boxColor}">
+          <div class="qr-wrapper role-{role}">
+            {#if qrImage}
+              <img src={qrImage} alt="QR Code" class="qr-image" />
+            {/if}
+          </div>
+          
+          <div class="qr-label">
+            YOUR QR CODE ({role === 'A' ? 'TRIANGLE' : 'CIRCLE'})
           </div>
         </div>
-      {/if}
-      
-      <div class="scanner-overlay">
-        <div class="camera-label">
-          SCAN COUNTERPARTY QR CODE
+        
+        <!-- Camera view for scanning -->
+        <div class="scanner-container">
+          <video 
+            bind:this={videoElement} 
+            autoplay 
+            playsinline 
+            muted
+            class="scanner-video"
+          ></video>
+          <canvas 
+            bind:this={canvasElement} 
+            class="scanner-canvas"
+          ></canvas>
+          
+          <!-- Detection overlay -->
+          {#if showDetectionOverlay}
+            <div class="detection-overlay">
+              <div class="detection-message">{detectionMessage}</div>
+              {#if progressPercent > 0}
+                <div class="progress-container">
+                  <div class="progress-bar" style="width: {progressPercent}%"></div>
+                </div>
+              {/if}
+            </div>
+          {/if}
+          
+          <div class="scanner-overlay">
+            <div class="camera-label">
+              SCAN {role === 'A' ? 'CIRCLE' : 'TRIANGLE'} QR CODE
+            </div>
+          </div>
         </div>
         
-        <div class="state-indicator" style="background-color: {boxColor}">
-          {state === 'initial' ? 'Ready to scan' : 
-           state === 'detected' ? 'Escrow QR detected' : 
-           state === 'verified' ? 'Escrow verified' :
-           state === 'completed' ? 'Escrow released!' : state}
+        <!-- Status for counterparty identification -->
+        <div class="status-box {counterpartyIdentified ? 'success' : 'waiting'}">
+          <div class="status-icon">
+            {#if counterpartyIdentified}
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+            {:else}
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            {/if}
+          </div>
+          <div class="status-text">
+            {counterpartyIdentified ? 'Counterparty identified' : 'Waiting for counterparty...'}
+          </div>
         </div>
       </div>
-    </div>
+    {:else if flowStep === 'configure'}
+      <!-- Configuration step: Set up agreement details -->
+      <div class="step-content">
+        <h3>Configure Agreement Details</h3>
+        
+        <div class="config-form">
+          <div class="form-group">
+            <label for="agreement-type">Agreement Type</label>
+            <select id="agreement-type" bind:value={agreementType} class="form-input">
+              <option value="escrow">Escrow</option>
+              <option value="bet">Bet</option>
+              <option value="settlement">Settlement</option>
+              <option value="transaction">Transaction</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="amount">Amount</label>
+            <input type="text" id="amount" bind:value={amount} class="form-input" />
+          </div>
+          
+          <div class="form-group">
+            <label for="parties">Parties</label>
+            <input type="text" id="parties" bind:value={parties} class="form-input" />
+          </div>
+          
+          <div class="form-group">
+            <label for="details">Details</label>
+            <textarea id="details" bind:value={details} class="form-input textarea"></textarea>
+          </div>
+          
+          <!-- Confirmation of counterparty -->
+          <div class="counterparty-confirmation">
+            <div class="confirmation-label">Counterparty Identified:</div>
+            <div class="confirmation-value">{counterpartyId || 'None'}</div>
+          </div>
+          
+          <button class="configure-button" on:click={configureAgreement}>
+            Proceed to Finalization
+          </button>
+        </div>
+      </div>
+    {:else if flowStep === 'finalize'}
+      <!-- Finalization step: Verify and finalize the agreement -->
+      <div class="step-content">
+        <h3>Finalize Agreement</h3>
+        <p>Scan each other's QR codes simultaneously to finalize the agreement.</p>
+        
+        <!-- Agreement summary -->
+        <div class="agreement-summary">
+          <div class="summary-row">
+            <span class="summary-label">Type:</span>
+            <span class="summary-value">{agreementType}</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Amount:</span>
+            <span class="summary-value">{amount}</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Parties:</span>
+            <span class="summary-value">{parties}</span>
+          </div>
+        </div>
+        
+        <!-- QR Code display with role-based shape -->
+        <div class="qr-display role-{role}" style="border-color: {boxColor}">
+          <div class="qr-wrapper role-{role}">
+            {#if qrImage}
+              <img src={qrImage} alt="QR Code" class="qr-image" />
+            {/if}
+          </div>
+          
+          <div class="qr-label">
+            YOUR QR CODE ({role === 'A' ? 'TRIANGLE' : 'CIRCLE'})
+          </div>
+        </div>
+        
+        <!-- Wrong QR alert -->
+        {#if focusedOnWrongQR}
+          <div class="wrong-qr-alert">
+            <div class="alert-icon">⚠️</div>
+            <div class="alert-text">
+              You are scanning your own QR code! Please aim at the other device's QR code.
+              <br>
+              <strong>Look for the {role === 'A' ? 'circular' : 'triangular'} shaped QR.</strong>
+            </div>
+          </div>
+        {/if}
+        
+        <!-- Camera view for scanning -->
+        <div class="scanner-container">
+          <video 
+            bind:this={videoElement} 
+            autoplay 
+            playsinline 
+            muted
+            class="scanner-video"
+          ></video>
+          <canvas 
+            bind:this={canvasElement} 
+            class="scanner-canvas"
+          ></canvas>
+          
+          <!-- Detection overlay with visual progress -->
+          {#if showDetectionOverlay}
+            <div class="detection-overlay">
+              <div class="detection-message">{detectionMessage}</div>
+              <div class="progress-container">
+                <div class="progress-bar" style="width: {progressPercent}%"></div>
+              </div>
+            </div>
+          {/if}
+          
+          <div class="scanner-overlay">
+            <div class="camera-label">
+              SCAN {role === 'A' ? 'CIRCLE' : 'TRIANGLE'} QR CODE
+            </div>
+            
+            <div class="state-indicator" style="background-color: {boxColor}">
+              {state === 'initial' ? 'Ready to scan' : 
+               state === 'detected' ? 'Agreement QR detected' : 
+               state === 'verified' ? 'Agreement verified' :
+               state === 'completed' ? 'Agreement finalized!' : state}
+            </div>
+          </div>
+        </div>
+        
+        <!-- Current state info -->
+        <div class="state-display" style="background-color: {boxColor}20">
+          <div class="state-icon">
+            {#if state === 'initial'}
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            {:else if state === 'detected'}
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+            {:else if state === 'verified'}
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            {:else if state === 'completed'}
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            {/if}
+          </div>
+          <div class="state-info">
+            <div class="state-title">
+              {state === 'initial' ? 'Ready to Finalize' : 
+               state === 'detected' ? 'Agreement QR Detected' : 
+               state === 'verified' ? 'Agreement Verified' :
+               state === 'completed' ? 'Agreement Finalized!' : state}
+            </div>
+            <div class="state-description">
+              {state === 'initial' ? 'Scan the other party\'s QR code to begin' : 
+               state === 'detected' ? 'Hold steady while verifying...' : 
+               state === 'verified' ? 'Agreement verification successful' :
+               state === 'completed' ? 'Agreement has been finalized' : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+    {/if}
     
     {#if error}
       <div class="error-message">
         {error}
       </div>
     {/if}
-    
-    <!-- Compact escrow details -->
-    <div class="escrow-details">
-      <div class="detail-row">
-        <span class="detail-label">Parties:</span>
-        <span class="detail-value">{parties}</span>
-      </div>
-      <div class="detail-row">
-        <span class="detail-label">Condition:</span>
-        <span class="detail-value">{condition}</span>
-      </div>
-    </div>
-    
-    <!-- Current state info (provides additional feedback) -->
-    <div class="state-display" style="background-color: {boxColor}20">
-      <div class="state-icon">
-        {#if state === 'initial'}
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-        {:else if state === 'detected'}
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
-        {:else if state === 'verified'}
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-        {:else if state === 'completed'}
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-        {/if}
-      </div>
-      <div class="state-info">
-        <div class="state-title">
-          {state === 'initial' ? 'Ready to Finalize' : 
-           state === 'detected' ? 'Escrow QR Detected' : 
-           state === 'verified' ? 'Escrow Verified' :
-           state === 'completed' ? 'Escrow Released!' : state}
-        </div>
-        <div class="state-description">
-          {state === 'initial' ? 'Scan counterparty\'s QR code to begin' : 
-           state === 'detected' ? 'Hold steady while verifying...' : 
-           state === 'verified' ? 'Escrow verification successful' :
-           state === 'completed' ? 'Tokens have been released' : ''}
-        </div>
-      </div>
-    </div>
     
     <!-- Success modal -->
     {#if showModal}
@@ -497,21 +798,25 @@
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
               <polyline points="22 4 12 14.01 9 11.01"></polyline>
             </svg>
-            <h3>Escrow Successfully Released!</h3>
+            <h3>Agreement Successfully Finalized!</h3>
           </div>
           
           <div class="success-details">
             <div class="detail-row">
-              <span class="detail-label">Escrow ID:</span>
-              <span class="detail-value">{escrowId}</span>
+              <span class="detail-label">Agreement ID:</span>
+              <span class="detail-value">{agreementId}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Type:</span>
+              <span class="detail-value">{agreementType}</span>
             </div>
             <div class="detail-row">
               <span class="detail-label">Amount:</span>
               <span class="detail-value">{amount}</span>
             </div>
             <div class="detail-row">
-              <span class="detail-label">Security Code:</span>
-              <span class="detail-value">{securityCode}</span>
+              <span class="detail-label">Confirmation Code:</span>
+              <span class="detail-value">{confirmationCode}</span>
             </div>
             <div class="detail-row">
               <span class="detail-label">Timestamp:</span>
@@ -524,7 +829,7 @@
               Close
             </button>
             <button class="modal-button primary" on:click={restart}>
-              New Verification
+              New Agreement
             </button>
           </div>
         </div>
@@ -535,6 +840,14 @@
     <div class="debug-panel">
       <h3>Debug Info</h3>
       <div class="debug-row">
+        <span class="debug-label">Flow Step:</span>
+        <span class="debug-value">{flowStep}</span>
+      </div>
+      <div class="debug-row">
+        <span class="debug-label">Role:</span>
+        <span class="debug-value">{role}</span>
+      </div>
+      <div class="debug-row">
         <span class="debug-label">State:</span>
         <span class="debug-value">{state}</span>
       </div>
@@ -543,18 +856,18 @@
         <span class="debug-value">{progressPercent}%</span>
       </div>
       <div class="debug-row">
-        <span class="debug-label">Tracking:</span>
-        <span class="debug-value">{trackingActive ? 'Active' : 'Inactive'}</span>
+        <span class="debug-label">Wrong QR:</span>
+        <span class="debug-value">{focusedOnWrongQR ? 'Yes' : 'No'}</span>
       </div>
       <div class="debug-row">
-        <span class="debug-label">Scans:</span>
-        <span class="debug-value">{scanCount}</span>
+        <span class="debug-label">Last QR:</span>
+        <span class="debug-value">{lastScannedQR}</span>
       </div>
     </div>
   </div>
   
   <style>
-    .escrow-container {
+    .agreement-container {
       position: relative;
       width: 100%;
       height: 100%;
@@ -562,9 +875,39 @@
       display: flex;
       flex-direction: column;
       gap: 15px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
     
-    .escrow-header {
+    /* Role selector */
+    .role-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 5px;
+    }
+    
+    .role-label {
+      font-weight: bold;
+      color: #555;
+    }
+    
+    .role-toggle {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      font-size: 14px;
+    }
+    
+    .role-toggle:hover {
+      background-color: #2980b9;
+    }
+    
+    /* Agreement header */
+    .agreement-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -574,14 +917,14 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     
-    .escrow-id {
+    .agreement-id {
       font-size: 24px;
       font-weight: bold;
       font-family: monospace;
       color: #2c5282;
     }
     
-    .escrow-amount {
+    .agreement-amount {
       font-size: 20px;
       font-weight: bold;
       color: #2f855a;
@@ -590,32 +933,122 @@
       border-radius: 20px;
     }
     
-    .escrow-details {
-      background-color: #f8f9fa;
-      border-radius: 8px;
-      padding: 12px;
+    /* Flow step indicator */
+    .flow-step-container {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
     }
     
-    .detail-row {
+    .step-indicator {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 60px;
+    }
+    
+    .step-number {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background-color: #e2e8f0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-weight: bold;
+      color: #4a5568;
+      margin-bottom: 5px;
+    }
+    
+    .step-indicator.active .step-number {
+      background-color: #4299e1;
+      color: white;
+    }
+    
+    .step-label {
+      font-size: 12px;
+      color: #4a5568;
+    }
+    
+    .step-indicator.active .step-label {
+      color: #2b6cb0;
+      font-weight: bold;
+    }
+    
+    .step-connector {
+      flex: 1;
+      height: 2px;
+      background-color: #e2e8f0;
+    }
+    
+    .step-content {
+      background-color: #f8f9fa;
+      border-radius: 8px;
+      padding: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .step-content h3 {
+      margin-top: 0;
+      margin-bottom: 10px;
+      color: #2d3748;
+      font-size: 18px;
+    }
+    
+    .step-content p {
+      color: #4a5568;
+      margin-bottom: 15px;
+    }
+    
+    /* Wrong QR alert */
+    .wrong-qr-alert {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      background-color: #fff3cd;
+      border: 1px solid #ffeeba;
+      border-radius: 6px;
+      color: #856404;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .alert-icon {
+      font-size: 24px;
+    }
+    
+    .alert-text {
+      font-size: 14px;
+    }
+    
+    /* Agreement summary */
+    .agreement-summary {
+      background-color: #edf2f7;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 15px;
+    }
+    
+    .summary-row {
       display: flex;
       margin-bottom: 6px;
     }
     
-    .detail-row:last-child {
+    .summary-row:last-child {
       margin-bottom: 0;
     }
     
-    .detail-label {
+    .summary-label {
       width: 100px;
       font-weight: bold;
       color: #4a5568;
     }
     
-    .detail-value {
+    .summary-value {
       color: #2d3748;
     }
     
-    /* QR display with larger size */
+    /* QR display with role-based shapes */
     .qr-display {
       width: 100%;
       padding: 15px;
@@ -626,17 +1059,44 @@
       background-color: white;
       border-radius: 12px;
       border-style: solid;
-      border-width: 5px; /* Thinner border */
+      border-width: 5px;
       box-sizing: border-box;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       transition: border-color 0.3s ease;
+      margin-bottom: 15px;
     }
     
-    .qr-image {
-      width: 300px; /* Larger QR */
-      height: 300px; /* Larger QR */
+    /* Role A: Triangle shape */
+    .qr-display.role-A {
+      clip-path: polygon(0% 100%, 50% 0%, 100% 100%);
+      padding-bottom: 40px; /* Extra space at bottom due to triangle shape */
+    }
+    
+    /* Role B: Circle shape */
+    .qr-display.role-B {
+      border-radius: 50%;
+      aspect-ratio: 1 / 1;
+      padding: 20px;
+    }
+    
+    .qr-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+    }
+    
+    /* Adjust QR code size based on role */
+    .qr-wrapper.role-A .qr-image {
+      width: 200px;
+      height: 200px;
       max-width: 100%;
-      max-height: 50vh; /* Limit height on mobile */
+    }
+    
+    .qr-wrapper.role-B .qr-image {
+      width: 220px;
+      height: 220px;
+      max-width: 100%;
     }
     
     .qr-label {
@@ -644,6 +1104,92 @@
       font-weight: bold;
       color: #555;
       font-size: 14px;
+      text-align: center;
+    }
+    
+    /* Config form */
+    .config-form {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    
+    .form-input {
+      padding: 8px 12px;
+      border: 1px solid #cbd5e0;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    
+    .form-input.textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+    
+    .counterparty-confirmation {
+      background-color: #ebf8ff;
+      border: 1px solid #bee3f8;
+      border-radius: 4px;
+      padding: 10px;
+      margin: 10px 0;
+    }
+    
+    .confirmation-label {
+      font-weight: bold;
+      color: #2c5282;
+      margin-bottom: 5px;
+    }
+    
+    .configure-button {
+      background-color: #4299e1;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 12px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      margin-top: 10px;
+    }
+    
+    .configure-button:hover {
+      background-color: #3182ce;
+    }
+    
+    /* Status box for counterparty identification */
+    .status-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 15px;
+    }
+    
+    .status-box.waiting {
+      background-color: #edf2f7;
+      color: #4a5568;
+    }
+    
+    .status-box.success {
+      background-color: #f0fff4;
+      color: #276749;
+    }
+    
+    .status-icon {
+      display: flex;
+      align-items: center;
+    }
+    
+    .status-text {
+      font-weight: bold;
     }
     
     /* Scanner container with proper aspect ratio */
@@ -655,6 +1201,7 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       /* Set aspect ratio with padding-bottom trick */
       padding-bottom: 75%; /* 4:3 aspect ratio */
+      margin-bottom: 15px;
     }
     
     .scanner-video {
@@ -844,6 +1391,28 @@
       margin-bottom: 20px;
     }
     
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    
+    .detail-row:last-child {
+      margin-bottom: 0;
+    }
+    
+    .detail-label {
+      font-weight: bold;
+      color: #4a5568;
+    }
+    
+    .detail-value {
+      color: #2d3748;
+      text-align: right;
+      max-width: 60%;
+      word-break: break-all;
+    }
+    
     .modal-actions {
       display: flex;
       justify-content: flex-end;
@@ -914,19 +1483,20 @@
     
     /* Media query to adjust for really small screens */
     @media (max-width: 400px) {
-      .escrow-header {
+      .agreement-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
       }
       
-      .escrow-amount {
+      .agreement-amount {
         align-self: flex-start;
       }
       
-      .qr-image {
-        width: 250px;
-        height: 250px;
+      .qr-wrapper.role-A .qr-image,
+      .qr-wrapper.role-B .qr-image {
+        width: 180px;
+        height: 180px;
       }
     }
   </style>
