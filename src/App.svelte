@@ -9,6 +9,7 @@
   import QRKissFinalize from './lib/components/QRKissFinalize.svelte'
   import QRDebugDemo from './lib/components/QRDebugDemo.svelte'
   import SimpleQRTest from './lib/components/SimpleQRTest.svelte'
+  import JuiceTokenActionInitializer from './lib/components/JuiceTokenActionInitializer.svelte'
   
   // Simple navigation
   let currentPage = 'home';
@@ -21,6 +22,13 @@
   function handleFinalize(agreement) {
     console.log('Agreement finalized:', agreement);
     alert(`Agreement ${agreement.agreementId} successfully finalized!`);
+  }
+  
+  // Handle token action initialization
+  function handleTokenActionInitialized(event) {
+    const action = event.detail.action;
+    console.log('Token action initialized:', action);
+    alert(`Token action ${action.id} initialized successfully! Type: ${action.type}, Amount: ${action.amount || 'N/A'}`);
   }
 </script>
 
@@ -82,6 +90,14 @@
           on:click={() => navigate('simpletest')}
         >
           Simple QR Test
+        </button>
+      </li>
+      <li>
+        <button 
+          class="px-4 py-2 rounded {currentPage === 'tokenactions' ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
+          on:click={() => navigate('tokenactions')}
+        >
+          Token Actions
         </button>
       </li>
     </ul>
@@ -155,6 +171,13 @@
     <div class="w-full mx-auto p-4 bg-gray-50 rounded-lg shadow">
       <h2 class="text-xl font-semibold mb-4">Simple QR Test</h2>
       <SimpleQRTest />
+    </div>
+  {:else if currentPage === 'tokenactions'}
+    <!-- Token Actions Section -->
+    <div class="w-full mx-auto p-4 bg-gray-50 rounded-lg shadow">
+      <h2 class="text-xl font-semibold mb-4">Ɉ Token Actions</h2>
+      <p class="text-sm text-gray-600 mb-4">Initialize and manage Juice token actions using QR codes.</p>
+      <JuiceTokenActionInitializer on:initialized={handleTokenActionInitialized} />
     </div>
   {/if}
 </main>
